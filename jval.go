@@ -96,61 +96,65 @@ func Or(vs ...Validator) Validator {
 	})
 }
 
-type ObjectOptions struct {
+type ObjectValidator struct {
+	Structure      map[string]Validator
 	AllowNull      bool
 	AllowOtherKeys bool
 }
 
-type ObjectDefinition map[string]Validator
-
-func Object(o ObjectOptions, d ObjectDefinition) Validator {
-	return Lambda(func(v *jsem.Value, f string) []Error {
-		if o.AllowNull && v.IsNull() {
-			return noErrors
-		}
-		if !o.AllowNull && v.IsNull() {
-			return []Error{commonError{"value_must_not_be_null", f, nil}}
-		}
-		if !v.IsObject() {
-			return []Error{commonError{"value_must_be_object", f, nil}}
-		}
-		ae := make([]Error, 0, len(d))
-		if !o.AllowOtherKeys {
-			v.ObjectForEach(func(k string, u *jsem.Value) {
-				if _, ok := d[k]; !ok {
-					ae = append(ae, commonError{"unallowed_object_key", f + "." + k, nil})
-				}
-			})
-		}
-		for k, a := range d {
-			u, _ := v.ObjectKey(k)
-			ae = append(ae, a.Validate(u, f+"."+k)...)
-		}
-		return ae
-	})
+func Object(structure map[string]Validator) Validator {
+	return ObjectValidator{structure, false, false}
 }
 
-type ArrayOptions struct {
+func (o ObjectValidator) Validate(v *jsem.Value, f string) []Error {
+	if o.AllowNull && v.IsNull() {
+		return noErrors
+	}
+	if !o.AllowNull && v.IsNull() {
+		return []Error{commonError{"value_must_not_be_null", f, nil}}
+	}
+	if !v.IsObject() {
+		return []Error{commonError{"value_must_be_object", f, nil}}
+	}
+	ae := make([]Error, 0, len(o.Structure))
+	if !o.AllowOtherKeys {
+		v.ObjectForEach(func(k string, u *jsem.Value) {
+			if _, ok := o.Structure[k]; !ok {
+				ae = append(ae, commonError{"unallowed_object_key", f + "." + k, nil})
+			}
+		})
+	}
+	for k, a := range o.Structure {
+		u, _ := v.ObjectKey(k)
+		ae = append(ae, a.Validate(u, f+"."+k)...)
+	}
+	return ae
+}
+
+type ArrayValidator struct {
+	Elements  Validator
 	AllowNull bool
 }
 
-func Array(o ArrayOptions, e Validator) Validator {
-	return Lambda(func(v *jsem.Value, f string) []Error {
-		if o.AllowNull && v.IsNull() {
-			return noErrors
-		}
-		if !o.AllowNull && v.IsNull() {
-			return []Error{commonError{"value_must_not_be_null", f, nil}}
-		}
-		if !v.IsArray() {
-			return []Error{commonError{"value_must_be_array", f, nil}}
-		}
-		ae := make([]Error, 0, 8)
-		v.ArrayForEach(func(i int, u *jsem.Value) {
-			ae = append(ae, e.Validate(u, f+"."+strconv.Itoa(i))...)
-		})
-		return ae
+func Array(elements Validator) Validator {
+	return ArrayValidator{elements, false}
+}
+
+func (o ArrayValidator) Validate(v *jsem.Value, f string) []Error {
+	if o.AllowNull && v.IsNull() {
+		return noErrors
+	}
+	if !o.AllowNull && v.IsNull() {
+		return []Error{commonError{"value_must_not_be_null", f, nil}}
+	}
+	if !v.IsArray() {
+		return []Error{commonError{"value_must_be_array", f, nil}}
+	}
+	ae := make([]Error, 0, 8)
+	v.ArrayForEach(func(i int, u *jsem.Value) {
+		ae = append(ae, o.Elements.Validate(u, f+"."+strconv.Itoa(i))...)
 	})
+	return ae
 }
 
 func Optional(a Validator) Validator {
@@ -170,7 +174,7 @@ func LengthBetween(x, y int) Validator {
 	if y < x {
 		panic("LengthBetween: y < x")
 	}
-	return And(Or(String, Array(ArrayOptions{AllowNull: false}, Anything)), Lambda(func(v *jsem.Value, f string) []Error {
+	return And(Or(String, Array(Anything)), Lambda(func(v *jsem.Value, f string) []Error {
 		l := -1
 		if v.IsArray() {
 			l, _ = v.ArrayLength()
