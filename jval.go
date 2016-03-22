@@ -454,8 +454,8 @@ func (a ExactlyValidator) MarshalJSON() ([]byte, error) {
 
 type CaseValidator []Validator
 
-func Case(c []Validator) Validator {
-	return CaseValidator(c)
+func Case(cs ...Validator) Validator {
+	return CaseValidator(cs)
 }
 
 func (a CaseValidator) Validate(v *jsem.Value, f string) []Error {
@@ -463,7 +463,7 @@ func (a CaseValidator) Validate(v *jsem.Value, f string) []Error {
 		cv, _ := v.ArrayIndex(0)
 		vv, _ := v.ArrayIndex(1)
 		ix, _ := cv.Int()
-		return a[ix].Validate(vv, f)
+		return a[ix].Validate(vv, f+".1")
 	})).Validate(v, f)
 }
 
@@ -487,6 +487,9 @@ func (r *RecursiveValidator) Define(v Validator) {
 }
 
 func (a *RecursiveValidator) MarshalJSON() ([]byte, error) {
+	if a.v == nil {
+		return nil, nil
+	}
 	if a.l == 0 {
 		a.l = 1 + rand.Int()
 		bs, e := json.Marshal([]interface{}{"recursion", []interface{}{a.l, a.v}})
