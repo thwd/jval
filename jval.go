@@ -4,10 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/thwd/jsem"
+	"math/rand"
 	"regexp"
 	"strconv"
-	"sync"
+	"time"
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 type Error struct {
 	Label   string
@@ -473,6 +478,7 @@ func (a ExactlyValidator) MarshalJSON() ([]byte, error) {
 
 type RecursiveValidator struct {
 	v Validator
+	l int
 }
 
 func (r *RecursiveValidator) Validate(v *jsem.Value, f string) []Error {
@@ -483,32 +489,22 @@ func (r *RecursiveValidator) Define(v Validator) {
 	r.v = v
 }
 
-var recursionMap = struct {
-	m map[*RecursiveValidator]struct{}
-	l *sync.Mutex
-}{
-	make(map[*RecursiveValidator]struct{}),
-	&sync.Mutex{},
-}
-
 func (a *RecursiveValidator) MarshalJSON() ([]byte, error) {
 	bf := bytes.NewBuffer(nil)
-	recursionMap.l.Lock()
-	_, k := recursionMap.m[a]
-	if !k {
-		recursionMap.m[a] = struct{}{}
-		recursionMap.l.Unlock()
+	if a.l == 0 {
 		bf := bytes.NewBuffer(nil)
+		a.l = rand.Int()
 		bf.WriteString(`["recursion",[`)
+		json.NewEncoder(bf).Encode(a.l)
+		bf.WriteString(`,`)
 		bs, _ := a.v.MarshalJSON()
 		bf.Write(bs)
+		a.l = 0
 		bf.WriteString(`]]`)
-		recursionMap.l.Lock()
-		delete(recursionMap.m, a)
-		recursionMap.l.Unlock()
 		return bf.Bytes(), nil
 	}
-	recursionMap.l.Unlock()
-	bf.WriteString(`["recurse",[]]`)
+	bf.WriteString(`["recurse",[`)
+	json.NewEncoder(bf).Encode(a.l)
+	bf.WriteString(`]]`)
 	return bf.Bytes(), nil
 }
