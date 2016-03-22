@@ -1,9 +1,9 @@
 package jval
 
 import (
-	"bytes"
 	"encoding/json"
 	"github.com/thwd/jsem"
+	"math"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -15,9 +15,9 @@ func init() {
 }
 
 type Error struct {
-	Label   string
-	Field   string
-	Context interface{}
+	Label   string      `json:"label"`
+	Field   string      `json:"field"`
+	Context interface{} `json:"context"`
 }
 
 // Error implements native "error" interface
@@ -158,17 +158,7 @@ func (a AndValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a AndValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["and",[`)
-	for i, l := 0, len(a); i < l; i++ {
-		bs, _ := a[i].MarshalJSON()
-		bf.Write(bs)
-		if i < (l - 1) {
-			bf.WriteString(`,`)
-		}
-	}
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"and", []Validator(a)})
 }
 
 type TupleValidator []Validator
@@ -191,17 +181,7 @@ func (a TupleValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a TupleValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["tuple",[`)
-	for i, l := 0, len(a); i < l; i++ {
-		bs, _ := a[i].MarshalJSON()
-		bf.Write(bs)
-		if i < (l - 1) {
-			bf.WriteString(`,`)
-		}
-	}
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"tuple", []Validator(a)})
 }
 
 type OrValidator []Validator
@@ -223,17 +203,7 @@ func (b OrValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a OrValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["or",[`)
-	for i, l := 0, len(a); i < l; i++ {
-		bs, _ := a[i].MarshalJSON()
-		bf.Write(bs)
-		if i < (l - 1) {
-			bf.WriteString(`,`)
-		}
-	}
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"or", []Validator(a)})
 }
 
 type ObjectValidator map[string]Validator
@@ -260,11 +230,7 @@ func (d ObjectValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a ObjectValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["object",[`)
-	json.NewEncoder(bf).Encode(map[string]Validator(a)) // TODO(thwd): TEST THIS!
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"object", []map[string]Validator{map[string]Validator(a)}})
 }
 
 type MapValidator struct {
@@ -287,12 +253,7 @@ func (a MapValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a MapValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["map",[`)
-	bs, _ := a.e.MarshalJSON()
-	bf.Write(bs)
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"map", []Validator{a.e}})
 }
 
 type ArrayValidator struct {
@@ -315,12 +276,7 @@ func (a ArrayValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a ArrayValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["array",[`)
-	bs, _ := a.e.MarshalJSON()
-	bf.Write(bs)
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"array", []Validator{a.e}})
 }
 
 type RegexValidator struct {
@@ -344,11 +300,7 @@ func (a RegexValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a RegexValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["regex",[`)
-	json.NewEncoder(bf).Encode(a.r.String())
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"regex", []string{a.r.String()}})
 }
 
 type OptionalValidator struct {
@@ -367,12 +319,7 @@ func (a OptionalValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a OptionalValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["optional",[`)
-	bs, _ := a.e.MarshalJSON()
-	bf.Write(bs)
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"optional", []Validator{a.e}})
 }
 
 type LengthBetweenValidator struct {
@@ -404,13 +351,7 @@ func (a LengthBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a LengthBetweenValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["lengthBetween",[`)
-	json.NewEncoder(bf).Encode(a.x)
-	bf.WriteString(`,`)
-	json.NewEncoder(bf).Encode(a.y)
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"lengthBetween", []int{a.x, a.y}})
 }
 
 func Length(x int) Validator {
@@ -441,13 +382,55 @@ func (a NumberBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a NumberBetweenValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["numberBetween",[`)
-	json.NewEncoder(bf).Encode(a.x)
-	bf.WriteString(`,`)
-	json.NewEncoder(bf).Encode(a.y)
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"numberBetween", []float64{a.x, a.y}})
+}
+
+type WholeNumberValidator struct{}
+
+func WholeNumber() Validator {
+	return WholeNumberValidator{}
+}
+
+func (a WholeNumberValidator) Validate(v *jsem.Value, f string) []Error {
+	return And(Number(), lambda(func(v *jsem.Value, f string) []Error {
+		n, _ := v.Float64()
+		_, r := math.Modf(n)
+		if r != 0 {
+			return []Error{Error{"value_must_be_whole_number", f, nil}}
+		}
+		return noErrors
+	})).Validate(v, f)
+}
+
+func (a WholeNumberValidator) MarshalJSON() ([]byte, error) {
+	return []byte(`["wholeNumber",[]]`), nil
+}
+
+type WholeNumberBetweenValidator struct {
+	x, y int
+}
+
+func WholeNumberBetween(x, y int) Validator {
+	if y < x {
+		panic("WholeNumberBetween: y < x")
+	}
+	return WholeNumberBetweenValidator{x, y}
+}
+
+func (a WholeNumberBetweenValidator) Validate(v *jsem.Value, f string) []Error {
+	return And(WholeNumber(), lambda(func(v *jsem.Value, f string) []Error {
+		l, _ := v.Int()
+		if l < a.x || l > a.y {
+			return []Error{
+				Error{"value_must_have_value_between", f, map[string]int{"min": a.x, "max": a.y}},
+			}
+		}
+		return noErrors
+	})).Validate(v, f)
+}
+
+func (a WholeNumberBetweenValidator) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]interface{}{"wholeNumberBetween", []int{a.x, a.y}})
 }
 
 type ExactlyValidator struct {
@@ -466,12 +449,26 @@ func (a ExactlyValidator) Validate(v *jsem.Value, f string) []Error {
 }
 
 func (a ExactlyValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
-	bf.WriteString(`["exactly",[`)
-	bs, _ := a.j.MarshalJSON()
-	bf.Write(bs)
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"exactly", []*jsem.Value{a.j}})
+}
+
+type CaseValidator []Validator
+
+func Case(c []Validator) Validator {
+	return CaseValidator(c)
+}
+
+func (a CaseValidator) Validate(v *jsem.Value, f string) []Error {
+	return And(Tuple(WholeNumberBetween(0, len(a)-1), Anything()), lambda(func(v *jsem.Value, f string) []Error {
+		cv, _ := v.ArrayIndex(0)
+		vv, _ := v.ArrayIndex(1)
+		ix, _ := cv.Int()
+		return a[ix].Validate(vv, f)
+	})).Validate(v, f)
+}
+
+func (a CaseValidator) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]interface{}{"case", []Validator(a)})
 }
 
 // here be dragons! use only if you know exactly what you're doing
@@ -490,21 +487,11 @@ func (r *RecursiveValidator) Define(v Validator) {
 }
 
 func (a *RecursiveValidator) MarshalJSON() ([]byte, error) {
-	bf := bytes.NewBuffer(nil)
 	if a.l == 0 {
-		bf := bytes.NewBuffer(nil)
-		a.l = rand.Int()
-		bf.WriteString(`["recursion",[`)
-		json.NewEncoder(bf).Encode(a.l)
-		bf.WriteString(`,`)
-		bs, _ := a.v.MarshalJSON()
-		bf.Write(bs)
+		a.l = 1 + rand.Int()
+		bs, e := json.Marshal([]interface{}{"recursion", []interface{}{a.l, a.v}})
 		a.l = 0
-		bf.WriteString(`]]`)
-		return bf.Bytes(), nil
+		return bs, e
 	}
-	bf.WriteString(`["recurse",[`)
-	json.NewEncoder(bf).Encode(a.l)
-	bf.WriteString(`]]`)
-	return bf.Bytes(), nil
+	return json.Marshal([]interface{}{"recurse", []interface{}{a.l}})
 }
