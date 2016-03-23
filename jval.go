@@ -1,7 +1,6 @@
 package jval
 
 import (
-	"encoding/json"
 	"github.com/thwd/jsem"
 	"math"
 	"math/rand"
@@ -29,7 +28,15 @@ var noErrors = []Error{}
 
 type Validator interface {
 	Validate(value *jsem.Value, field string) []Error
-	json.Marshaler
+	Marshallable() interface{}
+}
+
+func mapValidatorsToMarshallables(vs []Validator) []interface{} {
+	ms := make([]interface{}, 0, len(vs))
+	for _, p := range vs {
+		ms = append(ms, p.Marshallable())
+	}
+	return ms
 }
 
 type lambda func(v *jsem.Value, f string) []Error
@@ -38,8 +45,8 @@ func (l lambda) Validate(v *jsem.Value, f string) []Error {
 	return l(v, f)
 }
 
-func (l lambda) MarshalJSON() ([]byte, error) {
-	return []byte(``), nil // dummy, never exposed
+func (l lambda) Marshallable() interface{} {
+	return nil // dummy, never exposed
 }
 
 type AnythingValidator struct{}
@@ -52,8 +59,8 @@ func (a AnythingValidator) Validate(v *jsem.Value, f string) []Error {
 	return noErrors
 }
 
-func (a AnythingValidator) MarshalJSON() ([]byte, error) {
-	return []byte(`["anything",[]]`), nil
+func (a AnythingValidator) Marshallable() interface{} {
+	return []interface{}{"anything", []struct{}{}}
 }
 
 type StringValidator struct{}
@@ -69,8 +76,8 @@ func (a StringValidator) Validate(v *jsem.Value, f string) []Error {
 	return []Error{Error{"value_must_be_string", f, nil}}
 }
 
-func (a StringValidator) MarshalJSON() ([]byte, error) {
-	return []byte(`["string",[]]`), nil
+func (a StringValidator) Marshallable() interface{} {
+	return []interface{}{"string", []struct{}{}}
 }
 
 type NumberValidator struct{}
@@ -86,8 +93,8 @@ func (a NumberValidator) Validate(v *jsem.Value, f string) []Error {
 	return []Error{Error{"value_must_be_number", f, nil}}
 }
 
-func (a NumberValidator) MarshalJSON() ([]byte, error) {
-	return []byte(`["number",[]]`), nil
+func (a NumberValidator) Marshallable() interface{} {
+	return []interface{}{"number", []struct{}{}}
 }
 
 type BooleanValidator struct{}
@@ -103,8 +110,8 @@ func (a BooleanValidator) Validate(v *jsem.Value, f string) []Error {
 	return []Error{Error{"value_must_be_boolean", f, nil}}
 }
 
-func (a BooleanValidator) MarshalJSON() ([]byte, error) {
-	return []byte(`["boolean",[]]`), nil
+func (a BooleanValidator) Marshallable() interface{} {
+	return []interface{}{"boolean", []struct{}{}}
 }
 
 type NullValidator struct{}
@@ -120,8 +127,8 @@ func (a NullValidator) Validate(v *jsem.Value, f string) []Error {
 	return []Error{Error{"value_must_be_null", f, nil}}
 }
 
-func (a NullValidator) MarshalJSON() ([]byte, error) {
-	return []byte(`["null",[]]`), nil
+func (a NullValidator) Marshallable() interface{} {
+	return []interface{}{"null", []struct{}{}}
 }
 
 type NotNullValidator struct{}
@@ -137,8 +144,8 @@ func (a NotNullValidator) Validate(v *jsem.Value, f string) []Error {
 	return noErrors
 }
 
-func (a NotNullValidator) MarshalJSON() ([]byte, error) {
-	return []byte(`["notNull",[]]`), nil
+func (a NotNullValidator) Marshallable() interface{} {
+	return []interface{}{"notNull", []struct{}{}}
 }
 
 type AndValidator []Validator
@@ -157,8 +164,8 @@ func (a AndValidator) Validate(v *jsem.Value, f string) []Error {
 	return noErrors
 }
 
-func (a AndValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"and", []Validator(a)})
+func (a AndValidator) Marshallable() interface{} {
+	return []interface{}{"and", mapValidatorsToMarshallables(a)}
 }
 
 type TupleValidator []Validator
@@ -180,8 +187,8 @@ func (a TupleValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a TupleValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"tuple", []Validator(a)})
+func (a TupleValidator) Marshallable() interface{} {
+	return []interface{}{"tuple", mapValidatorsToMarshallables(a)}
 }
 
 type OrValidator []Validator
@@ -202,8 +209,8 @@ func (b OrValidator) Validate(v *jsem.Value, f string) []Error {
 	return ae // TODO(thwd): merge errors into one?
 }
 
-func (a OrValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"or", []Validator(a)})
+func (a OrValidator) Marshallable() interface{} {
+	return []interface{}{"or", mapValidatorsToMarshallables(a)}
 }
 
 type ObjectValidator map[string]Validator
@@ -229,8 +236,12 @@ func (d ObjectValidator) Validate(v *jsem.Value, f string) []Error {
 	return ae
 }
 
-func (a ObjectValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"object", []map[string]Validator{map[string]Validator(a)}})
+func (a ObjectValidator) Marshallable() interface{} {
+	ms := make(map[string]interface{})
+	for k, v := range a {
+		ms[k] = v.Marshallable()
+	}
+	return []interface{}{"object", []map[string]interface{}{ms}}
 }
 
 type MapValidator struct {
@@ -252,8 +263,8 @@ func (a MapValidator) Validate(v *jsem.Value, f string) []Error {
 	return ae
 }
 
-func (a MapValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"map", []Validator{a.e}})
+func (a MapValidator) Marshallable() interface{} {
+	return []interface{}{"map", []interface{}{a.e.Marshallable()}}
 }
 
 type ArrayValidator struct {
@@ -275,8 +286,8 @@ func (a ArrayValidator) Validate(v *jsem.Value, f string) []Error {
 	return ae
 }
 
-func (a ArrayValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"array", []Validator{a.e}})
+func (a ArrayValidator) Marshallable() interface{} {
+	return []interface{}{"array", []interface{}{a.e.Marshallable()}}
 }
 
 type RegexValidator struct {
@@ -299,8 +310,8 @@ func (a RegexValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a RegexValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"regex", []string{a.r.String()}})
+func (a RegexValidator) Marshallable() interface{} {
+	return []interface{}{"regex", []string{a.r.String()}}
 }
 
 type OptionalValidator struct {
@@ -318,8 +329,8 @@ func (a OptionalValidator) Validate(v *jsem.Value, f string) []Error {
 	return a.e.Validate(v, f)
 }
 
-func (a OptionalValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"optional", []Validator{a.e}})
+func (a OptionalValidator) Marshallable() interface{} {
+	return []interface{}{"optional", []interface{}{a.e.Marshallable()}}
 }
 
 type LengthBetweenValidator struct {
@@ -350,8 +361,8 @@ func (a LengthBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a LengthBetweenValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"lengthBetween", []int{a.x, a.y}})
+func (a LengthBetweenValidator) Marshallable() interface{} {
+	return []interface{}{"lengthBetween", []int{a.x, a.y}}
 }
 
 func Length(x int) Validator {
@@ -381,8 +392,8 @@ func (a NumberBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a NumberBetweenValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"numberBetween", []float64{a.x, a.y}})
+func (a NumberBetweenValidator) Marshallable() interface{} {
+	return []interface{}{"numberBetween", []float64{a.x, a.y}}
 }
 
 type WholeNumberValidator struct{}
@@ -402,8 +413,8 @@ func (a WholeNumberValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a WholeNumberValidator) MarshalJSON() ([]byte, error) {
-	return []byte(`["wholeNumber",[]]`), nil
+func (a WholeNumberValidator) Marshallable() interface{} {
+	return []interface{}{"wholeNumber", []struct{}{}}
 }
 
 type WholeNumberBetweenValidator struct {
@@ -429,8 +440,8 @@ func (a WholeNumberBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a WholeNumberBetweenValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"wholeNumberBetween", []int{a.x, a.y}})
+func (a WholeNumberBetweenValidator) Marshallable() interface{} {
+	return []interface{}{"wholeNumberBetween", []int{a.x, a.y}}
 }
 
 type ExactlyValidator struct {
@@ -448,8 +459,9 @@ func (a ExactlyValidator) Validate(v *jsem.Value, f string) []Error {
 	return noErrors
 }
 
-func (a ExactlyValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"exactly", []*jsem.Value{a.j}})
+func (a ExactlyValidator) Marshallable() interface{} {
+	vj, _ := a.j.MarshalJSON()
+	return []interface{}{"exactly", []string{string(vj)}}
 }
 
 type CaseValidator []Validator
@@ -467,8 +479,8 @@ func (a CaseValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a CaseValidator) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]interface{}{"case", []Validator(a)})
+func (a CaseValidator) Marshallable() interface{} {
+	return []interface{}{"case", mapValidatorsToMarshallables(a)}
 }
 
 // here be dragons! use only if you know exactly what you're doing
@@ -486,15 +498,15 @@ func (r *RecursiveValidator) Define(v Validator) {
 	r.v = v
 }
 
-func (a *RecursiveValidator) MarshalJSON() ([]byte, error) {
+func (a *RecursiveValidator) Marshallable() interface{} {
 	if a.v == nil {
-		return nil, nil
+		return nil
 	}
 	if a.l != "" {
-		return json.Marshal([]interface{}{"recurse", []interface{}{a.l}})
+		return []interface{}{"recurse", []string{a.l}}
 	}
 	a.l = strconv.Itoa(rand.Int())
-	bs, e := json.Marshal([]interface{}{"recursion", []interface{}{a.l, a.v}})
+	bs := []interface{}{"recursion", []interface{}{a.l, a.v.Marshallable()}}
 	a.l = ""
-	return bs, e
+	return bs
 }
