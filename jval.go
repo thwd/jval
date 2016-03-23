@@ -490,11 +490,11 @@ func (a *RecursiveValidator) MarshalJSON() ([]byte, error) {
 	if a.v == nil {
 		return nil, nil
 	}
-	if a.l == 0 {
-		a.l = 1 + rand.Int()
-		bs, e := json.Marshal([]interface{}{"recursion", []interface{}{a.l, a.v}})
-		a.l = 0
-		return bs, e
+	if a.l != 0 {
+		return json.Marshal([]interface{}{"recurse", []interface{}{a.l}})
 	}
-	return json.Marshal([]interface{}{"recurse", []interface{}{a.l}})
+	a.l = 1 + rand.Int()
+	bs, e := json.Marshal([]interface{}{"recursion", []interface{}{a.l, a.v}})
+	a.l = 0
+	return bs, e
 }
