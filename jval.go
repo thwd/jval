@@ -475,7 +475,7 @@ func (a CaseValidator) MarshalJSON() ([]byte, error) {
 
 type RecursiveValidator struct {
 	v Validator
-	l int
+	l string
 }
 
 func (r *RecursiveValidator) Validate(v *jsem.Value, f string) []Error {
@@ -490,11 +490,11 @@ func (a *RecursiveValidator) MarshalJSON() ([]byte, error) {
 	if a.v == nil {
 		return nil, nil
 	}
-	if a.l != 0 {
+	if a.l != "" {
 		return json.Marshal([]interface{}{"recurse", []interface{}{a.l}})
 	}
-	a.l = 1 + rand.Int()
+	a.l = strconv.Itoa(rand.Int())
 	bs, e := json.Marshal([]interface{}{"recursion", []interface{}{a.l, a.v}})
-	a.l = 0
+	a.l = ""
 	return bs, e
 }
