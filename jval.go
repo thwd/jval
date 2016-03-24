@@ -1,6 +1,7 @@
 package jval
 
 import (
+	"fmt"
 	"github.com/thwd/jsem"
 	"math"
 	"math/rand"
@@ -11,6 +12,90 @@ import (
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
+}
+
+func ParseMarshalled(i interface{}, r map[string]*RecursiveValidator) (Validator, error) {
+	a, k := i.([]interface{})
+	if !k {
+		return nil, fmt.Errorf("ParseMarshalled: definition should be a []interface{}")
+	}
+	c, k := a[0].(string)
+	if !k {
+		return nil, fmt.Errorf("ParseMarshalled: first element of definition should be constructor string.")
+	}
+	a, k = a[1].([]interface{})
+	if !k {
+		return nil, fmt.Errorf("ParseMarshalled: second element of definition should be arguments as []interface{}.")
+	}
+	if r == nil {
+		r = make(map[string]*RecursiveValidator)
+	}
+	switch c {
+	case "string":
+		return String(), nil
+	case "boolean":
+		return Boolean(), nil
+	case "number":
+		return Number(), nil
+	case "null":
+		return Null(), nil
+	case "anything":
+		return Anything(), nil
+	case "notNull":
+		return NotNull(), nil
+	case "regexString":
+		return RegexString(), nil
+	case "wholeNumber":
+		return WholeNumber(), nil
+	case "recursion":
+		l, k := a[0].(string)
+		if !k {
+			return nil, fmt.Errorf("ParseMarshalled: recursion expects first argument to be string")
+		}
+		g, k := a[1].([]interface{})
+		if !k {
+			return nil, fmt.Errorf("ParseMarshalled: recursion expects second argument to be []interface{}")
+		}
+		d := &RecursiveValidator{}
+		r[l] = d
+		m, e := ParseMarshalled(g, r)
+		if e != nil {
+			return nil, e
+		}
+		d.Define(m)
+		return d, nil
+
+	case "recurse":
+		l, k := a[0].(string)
+		if !k {
+			return nil, fmt.Errorf("ParseMarshalled: recurse expects first argument to be string")
+		}
+		d, k := r[l]
+		if !k {
+			return nil, fmt.Errorf("ParseMarshalled: recurse to undefined recursion label %s", l)
+		}
+		return d, nil
+
+		// TODO:
+		// and
+		// tuple
+		// or
+		// object
+		// map
+		// array
+		// regex
+		// optional
+		// lengthBetween
+		// numberBetween
+		// wholeNumberBetween
+		// exactly
+		// case
+		// recursion
+		// recurse
+	default:
+		return nil, fmt.Errorf("ParseMarshalled: undefined constructor string: %s", c)
+	}
+	panic("never reached")
 }
 
 type Error struct {
@@ -24,7 +109,7 @@ func (e Error) Error() string {
 	return e.Label
 }
 
-var noErrors = []Error{}
+var NoErrors = []Error{}
 
 type Validator interface {
 	Validate(value *jsem.Value, field string) []Error
@@ -56,7 +141,7 @@ func Anything() Validator {
 }
 
 func (a AnythingValidator) Validate(v *jsem.Value, f string) []Error {
-	return noErrors
+	return NoErrors
 }
 
 func (a AnythingValidator) Marshallable() interface{} {
@@ -71,7 +156,7 @@ func String() Validator {
 
 func (a StringValidator) Validate(v *jsem.Value, f string) []Error {
 	if v.IsString() {
-		return noErrors
+		return NoErrors
 	}
 	return []Error{Error{"value_must_be_string", f, nil}}
 }
@@ -88,7 +173,7 @@ func Number() Validator {
 
 func (a NumberValidator) Validate(v *jsem.Value, f string) []Error {
 	if v.IsNumber() {
-		return noErrors
+		return NoErrors
 	}
 	return []Error{Error{"value_must_be_number", f, nil}}
 }
@@ -105,7 +190,7 @@ func Boolean() Validator {
 
 func (a BooleanValidator) Validate(v *jsem.Value, f string) []Error {
 	if v.IsBoolean() {
-		return noErrors
+		return NoErrors
 	}
 	return []Error{Error{"value_must_be_boolean", f, nil}}
 }
@@ -122,7 +207,7 @@ func Null() Validator {
 
 func (a NullValidator) Validate(v *jsem.Value, f string) []Error {
 	if v.IsNull() {
-		return noErrors
+		return NoErrors
 	}
 	return []Error{Error{"value_must_be_null", f, nil}}
 }
@@ -141,7 +226,7 @@ func (a NotNullValidator) Validate(v *jsem.Value, f string) []Error {
 	if v.IsNull() {
 		return []Error{Error{"value_must_not_be_null", f, nil}}
 	}
-	return noErrors
+	return NoErrors
 }
 
 func (a NotNullValidator) Marshallable() interface{} {
@@ -161,7 +246,7 @@ func (a AndValidator) Validate(v *jsem.Value, f string) []Error {
 			return es
 		}
 	}
-	return noErrors
+	return NoErrors
 }
 
 func (a AndValidator) Marshallable() interface{} {
@@ -183,7 +268,7 @@ func (a TupleValidator) Validate(v *jsem.Value, f string) []Error {
 				return es
 			}
 		}
-		return noErrors
+		return NoErrors
 	})).Validate(v, f)
 }
 
@@ -202,7 +287,7 @@ func (b OrValidator) Validate(v *jsem.Value, f string) []Error {
 	for _, a := range b {
 		es := a.Validate(v, f)
 		if len(es) == 0 {
-			return noErrors
+			return NoErrors
 		}
 		ae = append(ae, es...)
 	}
@@ -302,7 +387,7 @@ func (a RegexValidator) Validate(v *jsem.Value, f string) []Error {
 	return And(String(), lambda(func(v *jsem.Value, f string) []Error {
 		s, _ := v.String()
 		if a.r.Match([]byte(s)) {
-			return noErrors
+			return NoErrors
 		}
 		return []Error{
 			Error{"value_must_match_regex", f, map[string]string{"regex": a.r.String()}},
@@ -312,6 +397,27 @@ func (a RegexValidator) Validate(v *jsem.Value, f string) []Error {
 
 func (a RegexValidator) Marshallable() interface{} {
 	return []interface{}{"regex", []string{a.r.String()}}
+}
+
+type RegexStringValidator struct{}
+
+func RegexString() Validator {
+	return RegexStringValidator{}
+}
+
+func (a RegexStringValidator) Validate(v *jsem.Value, f string) []Error {
+	return And(String(), lambda(func(v *jsem.Value, f string) []Error {
+		s, _ := v.String()
+		_, e := regexp.Compile(s)
+		if e != nil {
+			return []Error{Error{"value_must_be_regex_string", f, nil}}
+		}
+		return NoErrors
+	})).Validate(v, f)
+}
+
+func (a RegexStringValidator) Marshallable() interface{} {
+	return []interface{}{"regexString", []struct{}{}}
 }
 
 type OptionalValidator struct {
@@ -324,7 +430,7 @@ func Optional(e Validator) Validator {
 
 func (a OptionalValidator) Validate(v *jsem.Value, f string) []Error {
 	if v == nil {
-		return noErrors
+		return NoErrors
 	}
 	return a.e.Validate(v, f)
 }
@@ -357,7 +463,7 @@ func (a LengthBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 				Error{"value_must_have_length_between", f, map[string]int{"min": a.x, "max": a.y}},
 			}
 		}
-		return noErrors
+		return NoErrors
 	})).Validate(v, f)
 }
 
@@ -388,7 +494,7 @@ func (a NumberBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 				Error{"value_must_have_value_between", f, map[string]float64{"min": a.x, "max": a.y}},
 			}
 		}
-		return noErrors
+		return NoErrors
 	})).Validate(v, f)
 }
 
@@ -409,7 +515,7 @@ func (a WholeNumberValidator) Validate(v *jsem.Value, f string) []Error {
 		if r != 0 {
 			return []Error{Error{"value_must_be_whole_number", f, nil}}
 		}
-		return noErrors
+		return NoErrors
 	})).Validate(v, f)
 }
 
@@ -436,7 +542,7 @@ func (a WholeNumberBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 				Error{"value_must_have_value_between", f, map[string]int{"min": a.x, "max": a.y}},
 			}
 		}
-		return noErrors
+		return NoErrors
 	})).Validate(v, f)
 }
 
@@ -456,7 +562,7 @@ func (a ExactlyValidator) Validate(v *jsem.Value, f string) []Error {
 	if !v.Equals(a.j) {
 		return []Error{Error{"value_not_matched_exactly", f, nil}}
 	}
-	return noErrors
+	return NoErrors
 }
 
 func (a ExactlyValidator) Marshallable() interface{} {
@@ -505,7 +611,7 @@ func (a *RecursiveValidator) Marshallable() interface{} {
 	if a.l != "" {
 		return []interface{}{"recurse", []string{a.l}}
 	}
-	a.l = strconv.Itoa(rand.Int())
+	a.l = strconv.Itoa(rand.Intn(1000000))
 	bs := []interface{}{"recursion", []interface{}{a.l, a.v.Marshallable()}}
 	a.l = ""
 	return bs
