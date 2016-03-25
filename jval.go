@@ -1,7 +1,6 @@
 package jval
 
 import (
-	"fmt"
 	"github.com/thwd/jsem"
 	"math"
 	"math/rand"
@@ -12,90 +11,6 @@ import (
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
-}
-
-func ParseMarshalled(i interface{}, r map[string]*RecursiveValidator) (Validator, error) {
-	a, k := i.([]interface{})
-	if !k {
-		return nil, fmt.Errorf("ParseMarshalled: definition should be a []interface{}")
-	}
-	c, k := a[0].(string)
-	if !k {
-		return nil, fmt.Errorf("ParseMarshalled: first element of definition should be constructor string.")
-	}
-	a, k = a[1].([]interface{})
-	if !k {
-		return nil, fmt.Errorf("ParseMarshalled: second element of definition should be arguments as []interface{}.")
-	}
-	if r == nil {
-		r = make(map[string]*RecursiveValidator)
-	}
-	switch c {
-	case "string":
-		return String(), nil
-	case "boolean":
-		return Boolean(), nil
-	case "number":
-		return Number(), nil
-	case "null":
-		return Null(), nil
-	case "anything":
-		return Anything(), nil
-	case "notNull":
-		return NotNull(), nil
-	case "regexString":
-		return RegexString(), nil
-	case "wholeNumber":
-		return WholeNumber(), nil
-	case "recursion":
-		l, k := a[0].(string)
-		if !k {
-			return nil, fmt.Errorf("ParseMarshalled: recursion expects first argument to be string")
-		}
-		g, k := a[1].([]interface{})
-		if !k {
-			return nil, fmt.Errorf("ParseMarshalled: recursion expects second argument to be []interface{}")
-		}
-		d := &RecursiveValidator{}
-		r[l] = d
-		m, e := ParseMarshalled(g, r)
-		if e != nil {
-			return nil, e
-		}
-		d.Define(m)
-		return d, nil
-
-	case "recurse":
-		l, k := a[0].(string)
-		if !k {
-			return nil, fmt.Errorf("ParseMarshalled: recurse expects first argument to be string")
-		}
-		d, k := r[l]
-		if !k {
-			return nil, fmt.Errorf("ParseMarshalled: recurse to undefined recursion label %s", l)
-		}
-		return d, nil
-
-		// TODO:
-		// and
-		// tuple
-		// or
-		// object
-		// map
-		// array
-		// regex
-		// optional
-		// lengthBetween
-		// numberBetween
-		// wholeNumberBetween
-		// exactly
-		// case
-		// recursion
-		// recurse
-	default:
-		return nil, fmt.Errorf("ParseMarshalled: undefined constructor string: %s", c)
-	}
-	panic("never reached")
 }
 
 type Error struct {
@@ -113,25 +28,12 @@ var NoErrors = []Error{}
 
 type Validator interface {
 	Validate(value *jsem.Value, field string) []Error
-	Marshallable() interface{}
-}
-
-func mapValidatorsToMarshallables(vs []Validator) []interface{} {
-	ms := make([]interface{}, 0, len(vs))
-	for _, p := range vs {
-		ms = append(ms, p.Marshallable())
-	}
-	return ms
 }
 
 type lambda func(v *jsem.Value, f string) []Error
 
 func (l lambda) Validate(v *jsem.Value, f string) []Error {
 	return l(v, f)
-}
-
-func (l lambda) Marshallable() interface{} {
-	return nil // dummy, never exposed
 }
 
 type AnythingValidator struct{}
@@ -142,10 +44,6 @@ func Anything() Validator {
 
 func (a AnythingValidator) Validate(v *jsem.Value, f string) []Error {
 	return NoErrors
-}
-
-func (a AnythingValidator) Marshallable() interface{} {
-	return []interface{}{"anything", []struct{}{}}
 }
 
 type StringValidator struct{}
@@ -161,10 +59,6 @@ func (a StringValidator) Validate(v *jsem.Value, f string) []Error {
 	return []Error{Error{"value_must_be_string", f, nil}}
 }
 
-func (a StringValidator) Marshallable() interface{} {
-	return []interface{}{"string", []struct{}{}}
-}
-
 type NumberValidator struct{}
 
 func Number() Validator {
@@ -176,10 +70,6 @@ func (a NumberValidator) Validate(v *jsem.Value, f string) []Error {
 		return NoErrors
 	}
 	return []Error{Error{"value_must_be_number", f, nil}}
-}
-
-func (a NumberValidator) Marshallable() interface{} {
-	return []interface{}{"number", []struct{}{}}
 }
 
 type BooleanValidator struct{}
@@ -195,10 +85,6 @@ func (a BooleanValidator) Validate(v *jsem.Value, f string) []Error {
 	return []Error{Error{"value_must_be_boolean", f, nil}}
 }
 
-func (a BooleanValidator) Marshallable() interface{} {
-	return []interface{}{"boolean", []struct{}{}}
-}
-
 type NullValidator struct{}
 
 func Null() Validator {
@@ -212,10 +98,6 @@ func (a NullValidator) Validate(v *jsem.Value, f string) []Error {
 	return []Error{Error{"value_must_be_null", f, nil}}
 }
 
-func (a NullValidator) Marshallable() interface{} {
-	return []interface{}{"null", []struct{}{}}
-}
-
 type NotNullValidator struct{}
 
 func NotNull() Validator {
@@ -227,10 +109,6 @@ func (a NotNullValidator) Validate(v *jsem.Value, f string) []Error {
 		return []Error{Error{"value_must_not_be_null", f, nil}}
 	}
 	return NoErrors
-}
-
-func (a NotNullValidator) Marshallable() interface{} {
-	return []interface{}{"notNull", []struct{}{}}
 }
 
 type AndValidator []Validator
@@ -248,9 +126,8 @@ func (a AndValidator) Validate(v *jsem.Value, f string) []Error {
 	}
 	return NoErrors
 }
-
-func (a AndValidator) Marshallable() interface{} {
-	return []interface{}{"and", mapValidatorsToMarshallables(a)}
+func (a AndValidator) Validators() []Validator {
+	return []Validator(a)
 }
 
 type TupleValidator []Validator
@@ -271,9 +148,8 @@ func (a TupleValidator) Validate(v *jsem.Value, f string) []Error {
 		return NoErrors
 	})).Validate(v, f)
 }
-
-func (a TupleValidator) Marshallable() interface{} {
-	return []interface{}{"tuple", mapValidatorsToMarshallables(a)}
+func (a TupleValidator) Validators() []Validator {
+	return []Validator(a)
 }
 
 type OrValidator []Validator
@@ -293,9 +169,8 @@ func (b OrValidator) Validate(v *jsem.Value, f string) []Error {
 	}
 	return ae // TODO(thwd): merge errors into one?
 }
-
-func (a OrValidator) Marshallable() interface{} {
-	return []interface{}{"or", mapValidatorsToMarshallables(a)}
+func (a OrValidator) Validators() []Validator {
+	return []Validator(a)
 }
 
 type ObjectValidator map[string]Validator
@@ -321,12 +196,8 @@ func (d ObjectValidator) Validate(v *jsem.Value, f string) []Error {
 	return ae
 }
 
-func (a ObjectValidator) Marshallable() interface{} {
-	ms := make(map[string]interface{})
-	for k, v := range a {
-		ms[k] = v.Marshallable()
-	}
-	return []interface{}{"object", []map[string]interface{}{ms}}
+func (a ObjectValidator) Structure() map[string]Validator {
+	return (map[string]Validator)(a)
 }
 
 type MapValidator struct {
@@ -347,9 +218,8 @@ func (a MapValidator) Validate(v *jsem.Value, f string) []Error {
 	})
 	return ae
 }
-
-func (a MapValidator) Marshallable() interface{} {
-	return []interface{}{"map", []interface{}{a.e.Marshallable()}}
+func (a MapValidator) Validator() Validator {
+	return a.e
 }
 
 type ArrayValidator struct {
@@ -370,9 +240,8 @@ func (a ArrayValidator) Validate(v *jsem.Value, f string) []Error {
 	})
 	return ae
 }
-
-func (a ArrayValidator) Marshallable() interface{} {
-	return []interface{}{"array", []interface{}{a.e.Marshallable()}}
+func (a ArrayValidator) Validator() Validator {
+	return a.e
 }
 
 type RegexValidator struct {
@@ -381,6 +250,10 @@ type RegexValidator struct {
 
 func Regex(r *regexp.Regexp) Validator {
 	return RegexValidator{r}
+}
+
+func (a RegexValidator) Regex() *regexp.Regexp {
+	return a.r
 }
 
 func (a RegexValidator) Validate(v *jsem.Value, f string) []Error {
@@ -393,10 +266,6 @@ func (a RegexValidator) Validate(v *jsem.Value, f string) []Error {
 			Error{"value_must_match_regex", f, map[string]string{"regex": a.r.String()}},
 		}
 	})).Validate(v, f)
-}
-
-func (a RegexValidator) Marshallable() interface{} {
-	return []interface{}{"regex", []string{a.r.String()}}
 }
 
 type RegexStringValidator struct{}
@@ -416,10 +285,6 @@ func (a RegexStringValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a RegexStringValidator) Marshallable() interface{} {
-	return []interface{}{"regexString", []struct{}{}}
-}
-
 type OptionalValidator struct {
 	e Validator
 }
@@ -434,9 +299,8 @@ func (a OptionalValidator) Validate(v *jsem.Value, f string) []Error {
 	}
 	return a.e.Validate(v, f)
 }
-
-func (a OptionalValidator) Marshallable() interface{} {
-	return []interface{}{"optional", []interface{}{a.e.Marshallable()}}
+func (a OptionalValidator) Validator() Validator {
+	return a.e
 }
 
 type LengthBetweenValidator struct {
@@ -467,10 +331,6 @@ func (a LengthBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a LengthBetweenValidator) Marshallable() interface{} {
-	return []interface{}{"lengthBetween", []int{a.x, a.y}}
-}
-
 func Length(x int) Validator {
 	return LengthBetween(x, x)
 }
@@ -498,10 +358,6 @@ func (a NumberBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a NumberBetweenValidator) Marshallable() interface{} {
-	return []interface{}{"numberBetween", []float64{a.x, a.y}}
-}
-
 type WholeNumberValidator struct{}
 
 func WholeNumber() Validator {
@@ -517,10 +373,6 @@ func (a WholeNumberValidator) Validate(v *jsem.Value, f string) []Error {
 		}
 		return NoErrors
 	})).Validate(v, f)
-}
-
-func (a WholeNumberValidator) Marshallable() interface{} {
-	return []interface{}{"wholeNumber", []struct{}{}}
 }
 
 type WholeNumberBetweenValidator struct {
@@ -546,10 +398,6 @@ func (a WholeNumberBetweenValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a WholeNumberBetweenValidator) Marshallable() interface{} {
-	return []interface{}{"wholeNumberBetween", []int{a.x, a.y}}
-}
-
 type ExactlyValidator struct {
 	j *jsem.Value
 }
@@ -563,11 +411,6 @@ func (a ExactlyValidator) Validate(v *jsem.Value, f string) []Error {
 		return []Error{Error{"value_not_matched_exactly", f, nil}}
 	}
 	return NoErrors
-}
-
-func (a ExactlyValidator) Marshallable() interface{} {
-	vj, _ := a.j.MarshalJSON()
-	return []interface{}{"exactly", []string{string(vj)}}
 }
 
 type CaseValidator []Validator
@@ -585,15 +428,15 @@ func (a CaseValidator) Validate(v *jsem.Value, f string) []Error {
 	})).Validate(v, f)
 }
 
-func (a CaseValidator) Marshallable() interface{} {
-	return []interface{}{"case", mapValidatorsToMarshallables(a)}
-}
-
 // here be dragons! use only if you know exactly what you're doing
 
 type RecursiveValidator struct {
 	v Validator
 	l string
+}
+
+func (r *RecursiveValidator) Validator() Validator {
+	return r.v
 }
 
 func (r *RecursiveValidator) Validate(v *jsem.Value, f string) []Error {
@@ -602,17 +445,4 @@ func (r *RecursiveValidator) Validate(v *jsem.Value, f string) []Error {
 
 func (r *RecursiveValidator) Define(v Validator) {
 	r.v = v
-}
-
-func (a *RecursiveValidator) Marshallable() interface{} {
-	if a.v == nil {
-		return nil
-	}
-	if a.l != "" {
-		return []interface{}{"recurse", []string{a.l}}
-	}
-	a.l = strconv.Itoa(rand.Intn(1000000))
-	bs := []interface{}{"recursion", []interface{}{a.l, a.v.Marshallable()}}
-	a.l = ""
-	return bs
 }
