@@ -140,7 +140,7 @@ func (a TupleValidator) Validate(v *jsem.Value, f string) []Error {
 	return And(Array(Anything()), Length(len(a)), lambda(func(v *jsem.Value, f string) []Error {
 		for i, b := range a {
 			u, _ := v.ArrayIndex(i)
-			es := b.Validate(u, f+"."+strconv.Itoa(i))
+			es := b.Validate(u, joinPaths(f, strconv.Itoa(i)))
 			if len(es) != 0 {
 				return es
 			}
@@ -186,12 +186,12 @@ func (d ObjectValidator) Validate(v *jsem.Value, f string) []Error {
 	ae := make([]Error, 0, len(d))
 	v.ObjectForEach(func(k string, u *jsem.Value) {
 		if _, ok := d[k]; !ok {
-			ae = append(ae, Error{"unexpected_object_key", f + "." + k, nil})
+			ae = append(ae, Error{"unexpected_object_key", joinPaths(f, k), nil})
 		}
 	})
 	for k, a := range d {
 		u, _ := v.ObjectKey(k)
-		ae = append(ae, a.Validate(u, f+"."+k)...)
+		ae = append(ae, a.Validate(u, joinPaths(f, k))...)
 	}
 	return ae
 }
@@ -214,7 +214,7 @@ func (a MapValidator) Validate(v *jsem.Value, f string) []Error {
 	}
 	ae := make([]Error, 0, 8)
 	v.ObjectForEach(func(k string, u *jsem.Value) {
-		ae = append(ae, a.e.Validate(u, f+"."+k)...)
+		ae = append(ae, a.e.Validate(u, joinPaths(f, k))...)
 	})
 	return ae
 }
@@ -236,7 +236,7 @@ func (a ArrayValidator) Validate(v *jsem.Value, f string) []Error {
 	}
 	ae := make([]Error, 0, 8)
 	v.ArrayForEach(func(i int, u *jsem.Value) {
-		ae = append(ae, a.e.Validate(u, f+"."+strconv.Itoa(i))...)
+		ae = append(ae, a.e.Validate(u, joinPaths(f, strconv.Itoa(i)))...)
 	})
 	return ae
 }
@@ -419,6 +419,10 @@ func Case(cs ...Validator) Validator {
 	return CaseValidator(cs)
 }
 
+func (a CaseValidator) Validators() []Validator {
+	return []Validator(a)
+}
+
 func (a CaseValidator) Validate(v *jsem.Value, f string) []Error {
 	return And(Tuple(WholeNumberBetween(0, len(a)-1), Anything()), lambda(func(v *jsem.Value, f string) []Error {
 		cv, _ := v.ArrayIndex(0)
@@ -445,4 +449,11 @@ func (r *RecursiveValidator) Validate(v *jsem.Value, f string) []Error {
 
 func (r *RecursiveValidator) Define(v Validator) {
 	r.v = v
+}
+
+func joinPaths(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + "." + b
 }
