@@ -3,15 +3,9 @@ package jval
 import (
 	"github.com/thwd/jsem"
 	"math"
-	"math/rand"
 	"regexp"
 	"strconv"
-	"time"
 )
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
 
 type Error struct {
 	Label   string      `json:"label"`
@@ -190,7 +184,11 @@ func (d ObjectValidator) Validate(v *jsem.Value, f string) []Error {
 		}
 	})
 	for k, a := range d {
-		u, _ := v.ObjectKey(k)
+		u, e := v.ObjectKey(k)
+		if e != nil {
+			ae = append(ae, Error{"missing_object_key", joinPaths(f, k), nil})
+			continue
+		}
 		ae = append(ae, a.Validate(u, joinPaths(f, k))...)
 	}
 	return ae
@@ -413,23 +411,30 @@ func (a ExactlyValidator) Validate(v *jsem.Value, f string) []Error {
 	return NoErrors
 }
 
-type CaseValidator []Validator
+// type CaseValidator []Validator
 
-func Case(cs ...Validator) Validator {
-	return CaseValidator(cs)
-}
+// func Case(cs ...Validator) Validator {
+// 	return CaseValidator(cs)
+// }
 
-func (a CaseValidator) Validators() []Validator {
-	return []Validator(a)
-}
+// func (a CaseValidator) Validators() []Validator {
+// 	return []Validator(a)
+// }
 
-func (a CaseValidator) Validate(v *jsem.Value, f string) []Error {
-	return And(Tuple(WholeNumberBetween(0, len(a)-1), Anything()), lambda(func(v *jsem.Value, f string) []Error {
-		cv, _ := v.ArrayIndex(0)
-		vv, _ := v.ArrayIndex(1)
-		ix, _ := cv.Int()
-		return a[ix].Validate(vv, f+".1")
-	})).Validate(v, f)
+// func (a CaseValidator) Validate(v *jsem.Value, f string) []Error {
+// 	return And(Tuple(WholeNumberBetween(0, len(a)-1), Anything()), lambda(func(v *jsem.Value, f string) []Error {
+// 		cv, _ := v.ArrayIndex(0)
+// 		vv, _ := v.ArrayIndex(1)
+// 		ix, _ := cv.Int()
+// 		return a[ix].Validate(vv, joinPaths(f, "1"))
+// 	})).Validate(v, f)
+// }
+
+func joinPaths(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + "." + b
 }
 
 // here be dragons! use only if you know exactly what you're doing
@@ -449,11 +454,4 @@ func (r *RecursiveValidator) Validate(v *jsem.Value, f string) []Error {
 
 func (r *RecursiveValidator) Define(v Validator) {
 	r.v = v
-}
-
-func joinPaths(a, b string) string {
-	if a == "" {
-		return b
-	}
-	return a + "." + b
 }
