@@ -126,7 +126,11 @@ func (a AndValidator) Validate(v *jsem.Value, f string) []Error {
 	if len(ae) == 0 {
 		return NoErrors
 	}
-	return []Error{Error{"and", "", uniqueErrors(ae)}}
+	ue := uniqueErrors(ae)
+	if len(ue) == 1 {
+		return ue
+	}
+	return []Error{Error{"and", "", ue}}
 }
 func (a AndValidator) Validators() []Validator {
 	return []Validator(a)
@@ -178,7 +182,11 @@ func (b OrValidator) Validate(v *jsem.Value, f string) []Error {
 	if len(ae) == 0 {
 		return NoErrors
 	}
-	return []Error{Error{"or", "", uniqueErrors(ae)}}
+	ue := uniqueErrors(ae)
+	if len(ue) == 1 {
+		return ue
+	}
+	return []Error{Error{"or", "", ue}}
 }
 
 func (a OrValidator) Validators() []Validator {
@@ -261,11 +269,35 @@ func (a ArrayValidator) Validator() Validator {
 }
 
 type RegexValidator struct {
-	r *regexp.Regexp
+	l    string
+	i, m bool
+	x    string
+	r    *regexp.Regexp
 }
 
-func Regex(r *regexp.Regexp) Validator {
-	return RegexValidator{r}
+// see https://golang.org/pkg/regexp/syntax/
+func Regex(x, l string, i, m bool) Validator {
+	if i {
+		x = `(?i)` + x
+	}
+	if m {
+		x = `(?m)` + x
+	}
+	return RegexValidator{
+		l, i, m, x, regexp.MustCompile(x),
+	}
+}
+
+func (a RegexValidator) Label() string {
+	return a.l
+}
+
+func (a RegexValidator) Expression() string {
+	return a.x
+}
+
+func (a RegexValidator) Modifiers() (i, m bool) {
+	return a.i, a.m
 }
 
 func (a RegexValidator) Regex() *regexp.Regexp {
@@ -275,11 +307,19 @@ func (a RegexValidator) Regex() *regexp.Regexp {
 func (a RegexValidator) Validate(v *jsem.Value, f string) []Error {
 	return And(String(), Lambda(func(v *jsem.Value, f string) []Error {
 		s, _ := v.String()
-		if a.r.Match([]byte(s)) {
+		if a.r.MatchString(s) {
 			return NoErrors
 		}
 		return []Error{
-			Error{"value_must_match_regex", f, map[string]string{"regex": a.r.String()}},
+			Error{a.l, f, map[string]interface{}{
+				"regex": map[string]interface{}{
+					"expression": a.x,
+					"modifiers": map[string]bool{
+						"i": a.i,
+						"m": a.m,
+					},
+				},
+			}},
 		}
 	})).Validate(v, f)
 }
