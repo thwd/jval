@@ -9,7 +9,7 @@ import (
 
 type Error struct {
 	Label   string      `json:"label"`
-	Field   string      `json:"field"`
+	Field   []string    `json:"field"`
 	Context interface{} `json:"context"`
 }
 
@@ -18,15 +18,30 @@ func (e Error) Error() string {
 	return e.Label
 }
 
+func (e Error) Equals(o Error) bool {
+	if len(e.Field) != len(e.Field) {
+		return false
+	}
+	if e.Label != o.Label {
+		return false
+	}
+	for i, l := 0, len(e.Field); i < l; i++ {
+		if e.Field[i] != o.Field[i] {
+			return false
+		}
+	}
+	return e.Context == o.Context
+}
+
 var NoErrors = []Error{}
 
 type Validator interface {
-	Validate(value *jsem.Value, field string) []Error
+	Validate(value *jsem.Value, field []string) []Error
 }
 
-type Lambda func(v *jsem.Value, f string) []Error
+type Lambda func(v *jsem.Value, f []string) []Error
 
-func (l Lambda) Validate(v *jsem.Value, f string) []Error {
+func (l Lambda) Validate(v *jsem.Value, f []string) []Error {
 	return l(v, f)
 }
 
@@ -36,7 +51,7 @@ func Anything() Validator {
 	return AnythingValidator{}
 }
 
-func (a AnythingValidator) Validate(v *jsem.Value, f string) []Error {
+func (a AnythingValidator) Validate(v *jsem.Value, f []string) []Error {
 	return NoErrors
 }
 
@@ -46,7 +61,7 @@ func String() Validator {
 	return StringValidator{}
 }
 
-func (a StringValidator) Validate(v *jsem.Value, f string) []Error {
+func (a StringValidator) Validate(v *jsem.Value, f []string) []Error {
 	if v.IsString() {
 		return NoErrors
 	}
@@ -59,7 +74,7 @@ func Number() Validator {
 	return NumberValidator{}
 }
 
-func (a NumberValidator) Validate(v *jsem.Value, f string) []Error {
+func (a NumberValidator) Validate(v *jsem.Value, f []string) []Error {
 	if v.IsNumber() {
 		return NoErrors
 	}
@@ -72,7 +87,7 @@ func Boolean() Validator {
 	return BooleanValidator{}
 }
 
-func (a BooleanValidator) Validate(v *jsem.Value, f string) []Error {
+func (a BooleanValidator) Validate(v *jsem.Value, f []string) []Error {
 	if v.IsBoolean() {
 		return NoErrors
 	}
@@ -85,7 +100,7 @@ func Null() Validator {
 	return NullValidator{}
 }
 
-func (a NullValidator) Validate(v *jsem.Value, f string) []Error {
+func (a NullValidator) Validate(v *jsem.Value, f []string) []Error {
 	if v.IsNull() {
 		return NoErrors
 	}
@@ -98,7 +113,7 @@ func NotNull() Validator {
 	return NotNullValidator{}
 }
 
-func (a NotNullValidator) Validate(v *jsem.Value, f string) []Error {
+func (a NotNullValidator) Validate(v *jsem.Value, f []string) []Error {
 	if v.IsNull() {
 		return []Error{Error{"value_must_not_be_null", f, nil}}
 	}
@@ -111,7 +126,7 @@ func And(vs ...Validator) Validator {
 	return AndValidator(vs)
 }
 
-func (a AndValidator) Validate(v *jsem.Value, f string) []Error {
+func (a AndValidator) Validate(v *jsem.Value, f []string) []Error {
 	ae := make([]Error, 0, len(a))
 	for _, b := range a {
 		es := b.Validate(v, f)
@@ -130,7 +145,7 @@ func (a AndValidator) Validate(v *jsem.Value, f string) []Error {
 	if len(ue) == 1 {
 		return ue
 	}
-	return []Error{Error{"and", "", ue}}
+	return []Error{Error{"and", []string{}, ue}}
 }
 func (a AndValidator) Validators() []Validator {
 	return []Validator(a)
@@ -142,11 +157,11 @@ func Tuple(vs ...Validator) Validator {
 	return TupleValidator(vs)
 }
 
-func (a TupleValidator) Validate(v *jsem.Value, f string) []Error {
-	return And(Array(Anything()), Length(len(a)), Lambda(func(v *jsem.Value, f string) []Error {
+func (a TupleValidator) Validate(v *jsem.Value, f []string) []Error {
+	return And(Array(Anything()), Length(len(a)), Lambda(func(v *jsem.Value, f []string) []Error {
 		for i, b := range a {
 			u, _ := v.ArrayIndex(i)
-			es := b.Validate(u, joinPaths(f, strconv.Itoa(i)))
+			es := b.Validate(u, append(f, strconv.Itoa(i)))
 			if len(es) != 0 {
 				return es
 			}
@@ -164,7 +179,7 @@ func Or(vs ...Validator) Validator {
 	return OrValidator(vs)
 }
 
-func (b OrValidator) Validate(v *jsem.Value, f string) []Error {
+func (b OrValidator) Validate(v *jsem.Value, f []string) []Error {
 	ae := make([]Error, 0, len(b))
 	for _, a := range b {
 		es := a.Validate(v, f)
@@ -186,7 +201,7 @@ func (b OrValidator) Validate(v *jsem.Value, f string) []Error {
 	if len(ue) == 1 {
 		return ue
 	}
-	return []Error{Error{"or", "", ue}}
+	return []Error{Error{"or", []string{}, ue}}
 }
 
 func (a OrValidator) Validators() []Validator {
@@ -199,7 +214,7 @@ func Object(d map[string]Validator) Validator {
 	return ObjectValidator(d)
 }
 
-func (d ObjectValidator) Validate(v *jsem.Value, f string) []Error {
+func (d ObjectValidator) Validate(v *jsem.Value, f []string) []Error {
 	if !v.IsObject() {
 		return []Error{Error{"value_must_be_object", f, nil}}
 	}
@@ -215,7 +230,7 @@ func (d ObjectValidator) Validate(v *jsem.Value, f string) []Error {
 			ae = append(ae, Error{"missing_object_key", f, k})
 			continue
 		}
-		ae = append(ae, a.Validate(u, joinPaths(f, k))...)
+		ae = append(ae, a.Validate(u, append(f, k))...)
 	}
 	return ae
 }
@@ -232,13 +247,13 @@ func Map(e Validator) Validator {
 	return MapValidator{e}
 }
 
-func (a MapValidator) Validate(v *jsem.Value, f string) []Error {
+func (a MapValidator) Validate(v *jsem.Value, f []string) []Error {
 	if !v.IsObject() {
 		return []Error{Error{"value_must_be_object", f, nil}}
 	}
 	ae := make([]Error, 0, 8)
 	v.ObjectForEach(func(k string, u *jsem.Value) {
-		ae = append(ae, a.e.Validate(u, joinPaths(f, k))...)
+		ae = append(ae, a.e.Validate(u, append(f, k))...)
 	})
 	return ae
 }
@@ -254,13 +269,13 @@ func Array(e Validator) Validator {
 	return ArrayValidator{e}
 }
 
-func (a ArrayValidator) Validate(v *jsem.Value, f string) []Error {
+func (a ArrayValidator) Validate(v *jsem.Value, f []string) []Error {
 	if !v.IsArray() {
 		return []Error{Error{"value_must_be_array", f, nil}}
 	}
 	ae := make([]Error, 0, 8)
 	v.ArrayForEach(func(i int, u *jsem.Value) {
-		ae = append(ae, a.e.Validate(u, joinPaths(f, strconv.Itoa(i)))...)
+		ae = append(ae, a.e.Validate(u, append(f, strconv.Itoa(i)))...)
 	})
 	return ae
 }
@@ -304,8 +319,8 @@ func (a RegexValidator) Regex() *regexp.Regexp {
 	return a.r
 }
 
-func (a RegexValidator) Validate(v *jsem.Value, f string) []Error {
-	return And(String(), Lambda(func(v *jsem.Value, f string) []Error {
+func (a RegexValidator) Validate(v *jsem.Value, f []string) []Error {
+	return And(String(), Lambda(func(v *jsem.Value, f []string) []Error {
 		s, _ := v.String()
 		if a.r.MatchString(s) {
 			return NoErrors
@@ -330,8 +345,8 @@ func RegexString() Validator {
 	return RegexStringValidator{}
 }
 
-func (a RegexStringValidator) Validate(v *jsem.Value, f string) []Error {
-	return And(String(), Lambda(func(v *jsem.Value, f string) []Error {
+func (a RegexStringValidator) Validate(v *jsem.Value, f []string) []Error {
+	return And(String(), Lambda(func(v *jsem.Value, f []string) []Error {
 		s, _ := v.String()
 		_, e := regexp.Compile(s)
 		if e != nil {
@@ -349,7 +364,7 @@ func Optional(e Validator) Validator {
 	return OptionalValidator{e}
 }
 
-func (a OptionalValidator) Validate(v *jsem.Value, f string) []Error {
+func (a OptionalValidator) Validate(v *jsem.Value, f []string) []Error {
 	if v == nil {
 		return NoErrors
 	}
@@ -370,8 +385,8 @@ func LengthBetween(x, y int) Validator {
 	return LengthBetweenValidator{x, y}
 }
 
-func (a LengthBetweenValidator) Validate(v *jsem.Value, f string) []Error {
-	return And(Or(String(), Array(Anything())), Lambda(func(v *jsem.Value, f string) []Error {
+func (a LengthBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
+	return And(Or(String(), Array(Anything())), Lambda(func(v *jsem.Value, f []string) []Error {
 		l := -1
 		if v.IsArray() {
 			l, _ = v.ArrayLength()
@@ -402,8 +417,8 @@ func NumberBetween(x, y float64) Validator {
 	return NumberBetweenValidator{x, y}
 }
 
-func (a NumberBetweenValidator) Validate(v *jsem.Value, f string) []Error {
-	return And(Number(), Lambda(func(v *jsem.Value, f string) []Error {
+func (a NumberBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
+	return And(Number(), Lambda(func(v *jsem.Value, f []string) []Error {
 		l, _ := v.Float64()
 		if l < a.x || l > a.y {
 			return []Error{
@@ -420,8 +435,8 @@ func WholeNumber() Validator {
 	return WholeNumberValidator{}
 }
 
-func (a WholeNumberValidator) Validate(v *jsem.Value, f string) []Error {
-	return And(Number(), Lambda(func(v *jsem.Value, f string) []Error {
+func (a WholeNumberValidator) Validate(v *jsem.Value, f []string) []Error {
+	return And(Number(), Lambda(func(v *jsem.Value, f []string) []Error {
 		n, _ := v.Float64()
 		_, r := math.Modf(n)
 		if r != 0 {
@@ -442,8 +457,8 @@ func WholeNumberBetween(x, y int) Validator {
 	return WholeNumberBetweenValidator{x, y}
 }
 
-func (a WholeNumberBetweenValidator) Validate(v *jsem.Value, f string) []Error {
-	return And(WholeNumber(), Lambda(func(v *jsem.Value, f string) []Error {
+func (a WholeNumberBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
+	return And(WholeNumber(), Lambda(func(v *jsem.Value, f []string) []Error {
 		l, _ := v.Int()
 		if l < a.x || l > a.y {
 			return []Error{
@@ -466,7 +481,7 @@ func (a ExactlyValidator) Value() *jsem.Value {
 	return a.j
 }
 
-func (a ExactlyValidator) Validate(v *jsem.Value, f string) []Error {
+func (a ExactlyValidator) Validate(v *jsem.Value, f []string) []Error {
 	if !v.Equals(a.j) {
 		return []Error{Error{"value_not_matched_exactly", f, nil}}
 	}
@@ -483,8 +498,8 @@ func (a ExactlyValidator) Validate(v *jsem.Value, f string) []Error {
 // 	return []Validator(a)
 // }
 
-// func (a CaseValidator) Validate(v *jsem.Value, f string) []Error {
-// 	return And(Tuple(WholeNumberBetween(0, len(a)-1), Anything()), Lambda(func(v *jsem.Value, f string) []Error {
+// func (a CaseValidator) Validate(v *jsem.Value, f []string) []Error {
+// 	return And(Tuple(WholeNumberBetween(0, len(a)-1), Anything()), Lambda(func(v *jsem.Value, f []string) []Error {
 // 		cv, _ := v.ArrayIndex(0)
 // 		vv, _ := v.ArrayIndex(1)
 // 		ix, _ := cv.Int()
@@ -510,7 +525,7 @@ func (r *RecursiveValidator) Validator() Validator {
 	return r.v
 }
 
-func (r *RecursiveValidator) Validate(v *jsem.Value, f string) []Error {
+func (r *RecursiveValidator) Validate(v *jsem.Value, f []string) []Error {
 	return r.v.Validate(v, f)
 }
 
@@ -523,7 +538,7 @@ func uniqueErrors(es []Error) []Error {
 outer:
 	for _, e := range es {
 		for _, q := range uq {
-			if e == q {
+			if e.Equals(q) {
 				continue outer
 			}
 		}
