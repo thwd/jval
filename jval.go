@@ -19,7 +19,7 @@ func (e Error) Error() string {
 }
 
 func (e Error) Equals(o Error) bool {
-	if len(e.Field) != len(e.Field) {
+	if len(e.Field) != len(o.Field) {
 		return false
 	}
 	if e.Label != o.Label {
