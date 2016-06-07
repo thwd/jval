@@ -37,12 +37,17 @@ var NoErrors = []Error{}
 
 type Validator interface {
 	Validate(value *jsem.Value, field []string) []Error
+	Traverse(*jsem.Value, func(*jsem.Value, Validator))
 }
 
 type Lambda func(v *jsem.Value, f []string) []Error
 
 func (l Lambda) Validate(v *jsem.Value, f []string) []Error {
 	return l(v, f)
+}
+
+func (l Lambda) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, l)
 }
 
 type AnythingValidator struct{}
@@ -53,6 +58,10 @@ func Anything() Validator {
 
 func (a AnythingValidator) Validate(v *jsem.Value, f []string) []Error {
 	return NoErrors
+}
+
+func (a AnythingValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
 }
 
 type StringValidator struct{}
@@ -68,6 +77,10 @@ func (a StringValidator) Validate(v *jsem.Value, f []string) []Error {
 	return []Error{Error{"value_must_be_string", f, nil}}
 }
 
+func (a StringValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
+}
+
 type NumberValidator struct{}
 
 func Number() Validator {
@@ -79,6 +92,10 @@ func (a NumberValidator) Validate(v *jsem.Value, f []string) []Error {
 		return NoErrors
 	}
 	return []Error{Error{"value_must_be_number", f, nil}}
+}
+
+func (a NumberValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
 }
 
 type BooleanValidator struct{}
@@ -94,6 +111,10 @@ func (a BooleanValidator) Validate(v *jsem.Value, f []string) []Error {
 	return []Error{Error{"value_must_be_boolean", f, nil}}
 }
 
+func (a BooleanValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
+}
+
 type NullValidator struct{}
 
 func Null() Validator {
@@ -107,17 +128,8 @@ func (a NullValidator) Validate(v *jsem.Value, f []string) []Error {
 	return []Error{Error{"value_must_be_null", f, nil}}
 }
 
-type NotNullValidator struct{}
-
-func NotNull() Validator {
-	return NotNullValidator{}
-}
-
-func (a NotNullValidator) Validate(v *jsem.Value, f []string) []Error {
-	if v.IsNull() {
-		return []Error{Error{"value_must_not_be_null", f, nil}}
-	}
-	return NoErrors
+func (a NullValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
 }
 
 type AndValidator []Validator
@@ -151,27 +163,33 @@ func (a AndValidator) Validators() []Validator {
 	return []Validator(a)
 }
 
-type TupleValidator []Validator
-
-func Tuple(vs ...Validator) Validator {
-	return TupleValidator(vs)
+func (a AndValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	for _, b := range a {
+		b.Traverse(v, f)
+	}
 }
 
-func (a TupleValidator) Validate(v *jsem.Value, f []string) []Error {
-	return And(Array(Anything()), Length(len(a)), Lambda(func(v *jsem.Value, f []string) []Error {
-		for i, b := range a {
-			u, _ := v.ArrayIndex(i)
-			es := b.Validate(u, append(f, strconv.Itoa(i)))
-			if len(es) != 0 {
-				return es
-			}
-		}
-		return NoErrors
-	})).Validate(v, f)
-}
-func (a TupleValidator) Validators() []Validator {
-	return []Validator(a)
-}
+// type TupleValidator []Validator
+
+// func Tuple(vs ...Validator) Validator {
+// 	return TupleValidator(vs)
+// }
+
+// func (a TupleValidator) Validate(v *jsem.Value, f []string) []Error {
+// 	return And(Array(Anything()), Length(len(a)), Lambda(func(v *jsem.Value, f []string) []Error {
+// 		for i, b := range a {
+// 			u, _ := v.ArrayIndex(i)
+// 			es := b.Validate(u, append(f, strconv.Itoa(i)))
+// 			if len(es) != 0 {
+// 				return es
+// 			}
+// 		}
+// 		return NoErrors
+// 	})).Validate(v, f)
+// }
+// func (a TupleValidator) Validators() []Validator {
+// 	return []Validator(a)
+// }
 
 type OrValidator []Validator
 
@@ -208,6 +226,44 @@ func (a OrValidator) Validators() []Validator {
 	return []Validator(a)
 }
 
+func (a OrValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	for _, b := range a {
+		b.Traverse(v, f)
+	}
+}
+
+type CaseValidator map[string]Validator
+
+func Case(d map[string]Validator) Validator {
+	return CaseValidator(d)
+}
+
+func (d CaseValidator) Validate(v *jsem.Value, f []string) []Error {
+	if !v.IsObject() {
+		return []Error{Error{"value_must_be_object", f, nil}}
+	}
+	ks, _ := v.ObjectKeys()
+	if len(ks) != 1 {
+		return []Error{Error{"object_must_have_exactly_one_key", f, len(ks)}}
+	}
+	vd, k := d[ks[0]]
+	if !k {
+		return []Error{Error{"case_not_defined", f, ks[0]}}
+	}
+	tv, _ := v.ObjectKey(ks[0])
+	return vd.Validate(tv, append(f, ks[0]))
+}
+
+func (a CaseValidator) Structure() map[string]Validator {
+	return (map[string]Validator)(a)
+}
+
+func (a CaseValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	ks, _ := v.ObjectKeys()
+	w, _ := v.ObjectKey(ks[0])
+	a[ks[0]].Traverse(w, f)
+}
+
 type ObjectValidator map[string]Validator
 
 func Object(d map[string]Validator) Validator {
@@ -239,6 +295,12 @@ func (a ObjectValidator) Structure() map[string]Validator {
 	return (map[string]Validator)(a)
 }
 
+func (a ObjectValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	v.ObjectForEach(func(k string, w *jsem.Value) {
+		a[k].Traverse(w, f)
+	})
+}
+
 type MapValidator struct {
 	e Validator
 }
@@ -259,6 +321,12 @@ func (a MapValidator) Validate(v *jsem.Value, f []string) []Error {
 }
 func (a MapValidator) Validator() Validator {
 	return a.e
+}
+
+func (a MapValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	v.ForEach(func(v *jsem.Value) {
+		a.e.Traverse(v, f)
+	})
 }
 
 type ArrayValidator struct {
@@ -283,24 +351,20 @@ func (a ArrayValidator) Validator() Validator {
 	return a.e
 }
 
+func (a ArrayValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	v.ForEach(func(v *jsem.Value) {
+		a.e.Traverse(v, f)
+	})
+}
+
 type RegexValidator struct {
-	l    string
+	x, l string
 	i, m bool
-	x    string
-	r    *regexp.Regexp
 }
 
 // see https://golang.org/pkg/regexp/syntax/
 func Regex(x, l string, i, m bool) Validator {
-	if i {
-		x = `(?i)` + x
-	}
-	if m {
-		x = `(?m)` + x
-	}
-	return RegexValidator{
-		l, i, m, x, regexp.MustCompile(x),
-	}
+	return RegexValidator{x, l, i, m}
 }
 
 func (a RegexValidator) Label() string {
@@ -316,13 +380,20 @@ func (a RegexValidator) Modifiers() (i, m bool) {
 }
 
 func (a RegexValidator) Regex() *regexp.Regexp {
-	return a.r
+	x := a.x
+	if a.i {
+		x = `(?i)` + x
+	}
+	if a.m {
+		x = `(?m)` + x
+	}
+	return regexp.MustCompile(x)
 }
 
 func (a RegexValidator) Validate(v *jsem.Value, f []string) []Error {
 	return And(String(), Lambda(func(v *jsem.Value, f []string) []Error {
 		s, _ := v.String()
-		if a.r.MatchString(s) {
+		if a.Regex().MatchString(s) {
 			return NoErrors
 		}
 		return []Error{
@@ -339,22 +410,26 @@ func (a RegexValidator) Validate(v *jsem.Value, f []string) []Error {
 	})).Validate(v, f)
 }
 
-type RegexStringValidator struct{}
-
-func RegexString() Validator {
-	return RegexStringValidator{}
+func (a RegexValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
 }
 
-func (a RegexStringValidator) Validate(v *jsem.Value, f []string) []Error {
-	return And(String(), Lambda(func(v *jsem.Value, f []string) []Error {
-		s, _ := v.String()
-		_, e := regexp.Compile(s)
-		if e != nil {
-			return []Error{Error{"value_must_be_regex_string", f, nil}}
-		}
-		return NoErrors
-	})).Validate(v, f)
-}
+// type RegexStringValidator struct{}
+
+// func RegexString() Validator {
+// 	return RegexStringValidator{}
+// }
+
+// func (a RegexStringValidator) Validate(v *jsem.Value, f []string) []Error {
+// 	return And(String(), Lambda(func(v *jsem.Value, f []string) []Error {
+// 		s, _ := v.String()
+// 		_, e := regexp.Compile(s)
+// 		if e != nil {
+// 			return []Error{Error{"value_must_be_regex_string", f, nil}}
+// 		}
+// 		return NoErrors
+// 	})).Validate(v, f)
+// }
 
 type OptionalValidator struct {
 	e Validator
@@ -372,6 +447,10 @@ func (a OptionalValidator) Validate(v *jsem.Value, f []string) []Error {
 }
 func (a OptionalValidator) Validator() Validator {
 	return a.e
+}
+
+func (a OptionalValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	a.e.Traverse(v, f)
 }
 
 type LengthBetweenValidator struct {
@@ -402,6 +481,18 @@ func (a LengthBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
 	})).Validate(v, f)
 }
 
+func (a LengthBetweenValidator) Min() int {
+	return a.x
+}
+
+func (a LengthBetweenValidator) Max() int {
+	return a.y
+}
+
+func (a LengthBetweenValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
+}
+
 func Length(x int) Validator {
 	return LengthBetween(x, x)
 }
@@ -429,6 +520,10 @@ func (a NumberBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
 	})).Validate(v, f)
 }
 
+func (a NumberBetweenValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
+}
+
 type WholeNumberValidator struct{}
 
 func WholeNumber() Validator {
@@ -444,6 +539,10 @@ func (a WholeNumberValidator) Validate(v *jsem.Value, f []string) []Error {
 		}
 		return NoErrors
 	})).Validate(v, f)
+}
+
+func (a WholeNumberValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
 }
 
 type WholeNumberBetweenValidator struct {
@@ -469,6 +568,10 @@ func (a WholeNumberBetweenValidator) Validate(v *jsem.Value, f []string) []Error
 	})).Validate(v, f)
 }
 
+func (a WholeNumberBetweenValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
+}
+
 type ExactlyValidator struct {
 	j *jsem.Value
 }
@@ -488,37 +591,22 @@ func (a ExactlyValidator) Validate(v *jsem.Value, f []string) []Error {
 	return NoErrors
 }
 
-// type CaseValidator []Validator
-
-// func Case(cs ...Validator) Validator {
-// 	return CaseValidator(cs)
-// }
-
-// func (a CaseValidator) Validators() []Validator {
-// 	return []Validator(a)
-// }
-
-// func (a CaseValidator) Validate(v *jsem.Value, f []string) []Error {
-// 	return And(Tuple(WholeNumberBetween(0, len(a)-1), Anything()), Lambda(func(v *jsem.Value, f []string) []Error {
-// 		cv, _ := v.ArrayIndex(0)
-// 		vv, _ := v.ArrayIndex(1)
-// 		ix, _ := cv.Int()
-// 		return a[ix].Validate(vv, joinPaths(f, "1"))
-// 	})).Validate(v, f)
-// }
-
-func joinPaths(a, b string) string {
-	if a == "" {
-		return b
-	}
-	return a + "." + b
+func (a ExactlyValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	f(v, a)
 }
 
-// here be dragons! use only if you know exactly what you're doing
+// here be dragons! change only if you know exactly what you're doing
 
+// NOT thread safe
 type RecursiveValidator struct {
 	v Validator
-	l string
+	l bool
+}
+
+func Recursion(f func(Validator) Validator) Validator {
+	a := &RecursiveValidator{}
+	a.Define(f(a))
+	return a
 }
 
 func (r *RecursiveValidator) Validator() Validator {
@@ -531,6 +619,15 @@ func (r *RecursiveValidator) Validate(v *jsem.Value, f []string) []Error {
 
 func (r *RecursiveValidator) Define(v Validator) {
 	r.v = v
+}
+
+func (r *RecursiveValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+	if r.l {
+		return
+	}
+	r.l = true
+	r.v.Traverse(v, f)
+	r.l = false
 }
 
 func uniqueErrors(es []Error) []Error {
