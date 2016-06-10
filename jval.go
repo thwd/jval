@@ -135,6 +135,12 @@ func (a NullValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
 type AndValidator []Validator
 
 func And(vs ...Validator) Validator {
+	if len(vs) == 0 {
+		panic("and of 1 condition")
+	}
+	if len(vs) == 1 {
+		return vs[0]
+	}
 	return AndValidator(vs)
 }
 
@@ -194,6 +200,12 @@ func (a AndValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
 type OrValidator []Validator
 
 func Or(vs ...Validator) Validator {
+	if len(vs) == 0 {
+		panic("or of 1 condition")
+	}
+	if len(vs) == 1 {
+		return vs[0]
+	}
 	return OrValidator(vs)
 }
 
@@ -473,6 +485,11 @@ func (a LengthBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
 			l, _ = v.StringLength()
 		}
 		if l < a.x || l > a.y {
+			if a.x == a.y {
+				return []Error{
+					Error{"value_must_have_length", f, a.x},
+				}
+			}
 			return []Error{
 				Error{"value_must_have_length_between", f, map[string]int{"min": a.x, "max": a.y}},
 			}
