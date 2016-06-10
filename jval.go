@@ -136,7 +136,7 @@ type AndValidator []Validator
 
 func And(vs ...Validator) Validator {
 	if len(vs) == 0 {
-		panic("and of 1 condition")
+		panic("and of 0 conditions")
 	}
 	if len(vs) == 1 {
 		return vs[0]
@@ -201,7 +201,7 @@ type OrValidator []Validator
 
 func Or(vs ...Validator) Validator {
 	if len(vs) == 0 {
-		panic("or of 1 condition")
+		panic("or of 0 conditions")
 	}
 	if len(vs) == 1 {
 		return vs[0]
