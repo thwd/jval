@@ -574,15 +574,7 @@ func WholeNumberBetween(x, y int) Validator {
 }
 
 func (a WholeNumberBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
-	return And(WholeNumber(), Lambda(func(v *jsem.Value, f []string) []Error {
-		l, _ := v.Int()
-		if l < a.x || l > a.y {
-			return []Error{
-				Error{"value_must_have_value_between", f, map[string]int{"min": a.x, "max": a.y}},
-			}
-		}
-		return NoErrors
-	})).Validate(v, f)
+	return And(WholeNumber(), NumberBetween(float64(a.x), float64(a.y))).Validate(v, f)
 }
 
 func (a WholeNumberBetweenValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
@@ -617,7 +609,6 @@ func (a ExactlyValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)
 // NOT thread safe
 type RecursiveValidator struct {
 	v Validator
-	l bool
 }
 
 func Recursion(f func(Validator) Validator) Validator {
@@ -639,12 +630,7 @@ func (r *RecursiveValidator) Define(v Validator) {
 }
 
 func (r *RecursiveValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
-	if r.l {
-		return
-	}
-	r.l = true
 	r.v.Traverse(v, f)
-	r.l = false
 }
 
 func uniqueErrors(es []Error) []Error {
