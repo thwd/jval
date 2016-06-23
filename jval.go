@@ -1,7 +1,6 @@
 package jval
 
 import (
-	"github.com/thwd/jsem"
 	"math"
 	"regexp"
 	"strconv"
@@ -36,17 +35,17 @@ func (e Error) Equals(o Error) bool {
 var NoErrors = []Error{}
 
 type Validator interface {
-	Validate(value *jsem.Value, field []string) []Error
-	Traverse(*jsem.Value, func(*jsem.Value, Validator))
+	Validate(value interface{}, field []string) []Error
+	Traverse(interface{}, func(interface{}, Validator))
 }
 
-type Lambda func(v *jsem.Value, f []string) []Error
+type Lambda func(v interface{}, f []string) []Error
 
-func (l Lambda) Validate(v *jsem.Value, f []string) []Error {
+func (l Lambda) Validate(v interface{}, f []string) []Error {
 	return l(v, f)
 }
 
-func (l Lambda) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (l Lambda) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, l)
 }
 
@@ -56,11 +55,11 @@ func Anything() Validator {
 	return AnythingValidator{}
 }
 
-func (a AnythingValidator) Validate(v *jsem.Value, f []string) []Error {
+func (a AnythingValidator) Validate(v interface{}, f []string) []Error {
 	return NoErrors
 }
 
-func (a AnythingValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a AnythingValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
@@ -70,14 +69,14 @@ func String() Validator {
 	return StringValidator{}
 }
 
-func (a StringValidator) Validate(v *jsem.Value, f []string) []Error {
-	if v.IsString() {
+func (a StringValidator) Validate(v interface{}, f []string) []Error {
+	if _, k := v.(string); k {
 		return NoErrors
 	}
 	return []Error{Error{"value_must_be_string", f, nil}}
 }
 
-func (a StringValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a StringValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
@@ -87,14 +86,14 @@ func Number() Validator {
 	return NumberValidator{}
 }
 
-func (a NumberValidator) Validate(v *jsem.Value, f []string) []Error {
-	if v.IsNumber() {
+func (a NumberValidator) Validate(v interface{}, f []string) []Error {
+	if _, k := v.(float64); k {
 		return NoErrors
 	}
 	return []Error{Error{"value_must_be_number", f, nil}}
 }
 
-func (a NumberValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a NumberValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
@@ -104,14 +103,14 @@ func Boolean() Validator {
 	return BooleanValidator{}
 }
 
-func (a BooleanValidator) Validate(v *jsem.Value, f []string) []Error {
-	if v.IsBoolean() {
+func (a BooleanValidator) Validate(v interface{}, f []string) []Error {
+	if _, k := v.(bool); k {
 		return NoErrors
 	}
 	return []Error{Error{"value_must_be_boolean", f, nil}}
 }
 
-func (a BooleanValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a BooleanValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
@@ -121,14 +120,14 @@ func Null() Validator {
 	return NullValidator{}
 }
 
-func (a NullValidator) Validate(v *jsem.Value, f []string) []Error {
-	if v.IsNull() {
+func (a NullValidator) Validate(v interface{}, f []string) []Error {
+	if v == nil {
 		return NoErrors
 	}
 	return []Error{Error{"value_must_be_null", f, nil}}
 }
 
-func (a NullValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a NullValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
@@ -144,7 +143,7 @@ func And(vs ...Validator) Validator {
 	return AndValidator(vs)
 }
 
-func (a AndValidator) Validate(v *jsem.Value, f []string) []Error {
+func (a AndValidator) Validate(v interface{}, f []string) []Error {
 	ae := make([]Error, 0, len(a))
 	for _, b := range a {
 		es := b.Validate(v, f)
@@ -169,7 +168,7 @@ func (a AndValidator) Validators() []Validator {
 	return []Validator(a)
 }
 
-func (a AndValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a AndValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	for _, b := range a {
 		b.Traverse(v, f)
 	}
@@ -181,8 +180,8 @@ func (a AndValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
 // 	return TupleValidator(vs)
 // }
 
-// func (a TupleValidator) Validate(v *jsem.Value, f []string) []Error {
-// 	return And(Array(Anything()), Length(len(a)), Lambda(func(v *jsem.Value, f []string) []Error {
+// func (a TupleValidator) Validate(v interface{}, f []string) []Error {
+// 	return And(Array(Anything()), Length(len(a)), Lambda(func(v interface{}, f []string) []Error {
 // 		for i, b := range a {
 // 			u, _ := v.ArrayIndex(i)
 // 			es := b.Validate(u, append(f, strconv.Itoa(i)))
@@ -209,7 +208,7 @@ func Or(vs ...Validator) Validator {
 	return OrValidator(vs)
 }
 
-func (b OrValidator) Validate(v *jsem.Value, f []string) []Error {
+func (b OrValidator) Validate(v interface{}, f []string) []Error {
 	ae := make([]Error, 0, len(b))
 	for _, a := range b {
 		es := a.Validate(v, f)
@@ -238,7 +237,7 @@ func (a OrValidator) Validators() []Validator {
 	return []Validator(a)
 }
 
-func (a OrValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a OrValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	for _, b := range a {
 		b.Traverse(v, f)
 	}
@@ -250,30 +249,36 @@ func Case(d map[string]Validator) Validator {
 	return CaseValidator(d)
 }
 
-func (d CaseValidator) Validate(v *jsem.Value, f []string) []Error {
-	if !v.IsObject() {
+func (d CaseValidator) Validate(v interface{}, f []string) []Error {
+	o, k := v.(map[string]interface{})
+	if !k {
 		return []Error{Error{"value_must_be_object", f, nil}}
 	}
-	ks, _ := v.ObjectKeys()
-	if len(ks) != 1 {
-		return []Error{Error{"object_must_have_exactly_one_key", f, len(ks)}}
+	if len(o) != 1 {
+		return []Error{Error{"object_must_have_exactly_one_key", f, nil}}
 	}
-	vd, k := d[ks[0]]
+	c := ""
+	for k, _ := range o {
+		c = k
+	}
+	vd, k := d[c]
 	if !k {
-		return []Error{Error{"case_not_defined", f, ks[0]}}
+		return []Error{Error{"case_not_defined", f, c}}
 	}
-	tv, _ := v.ObjectKey(ks[0])
-	return vd.Validate(tv, append(f, ks[0]))
+	tv := o[c]
+	return vd.Validate(tv, append(f, c))
 }
 
 func (a CaseValidator) Structure() map[string]Validator {
 	return (map[string]Validator)(a)
 }
 
-func (a CaseValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
-	ks, _ := v.ObjectKeys()
-	w, _ := v.ObjectKey(ks[0])
-	a[ks[0]].Traverse(w, f)
+func (a CaseValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
+	c, o := "", v.(map[string]interface{})
+	for k, _ := range o {
+		c = k
+	}
+	a[c].Traverse(o[c], f)
 }
 
 type ObjectValidator map[string]Validator
@@ -282,19 +287,20 @@ func Object(d map[string]Validator) Validator {
 	return ObjectValidator(d)
 }
 
-func (d ObjectValidator) Validate(v *jsem.Value, f []string) []Error {
-	if !v.IsObject() {
+func (d ObjectValidator) Validate(v interface{}, f []string) []Error {
+	o, k := v.(map[string]interface{})
+	if !k {
 		return []Error{Error{"value_must_be_object", f, nil}}
 	}
 	ae := make([]Error, 0, len(d))
-	v.ObjectForEach(func(k string, u *jsem.Value) {
+	for k, _ := range o {
 		if _, ok := d[k]; !ok {
 			ae = append(ae, Error{"unexpected_object_key", f, k})
 		}
-	})
+	}
 	for k, a := range d {
-		u, e := v.ObjectKey(k)
-		if e != nil {
+		u, x := o[k]
+		if !x {
 			ae = append(ae, Error{"missing_object_key", f, k})
 			continue
 		}
@@ -307,10 +313,10 @@ func (a ObjectValidator) Structure() map[string]Validator {
 	return (map[string]Validator)(a)
 }
 
-func (a ObjectValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
-	v.ObjectForEach(func(k string, w *jsem.Value) {
-		a[k].Traverse(w, f)
-	})
+func (a ObjectValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
+	for k, v := range v.(map[string]interface{}) {
+		a[k].Traverse(v, f)
+	}
 }
 
 type MapValidator struct {
@@ -321,24 +327,25 @@ func Map(e Validator) Validator {
 	return MapValidator{e}
 }
 
-func (a MapValidator) Validate(v *jsem.Value, f []string) []Error {
-	if !v.IsObject() {
+func (a MapValidator) Validate(v interface{}, f []string) []Error {
+	o, k := v.(map[string]interface{})
+	if !k {
 		return []Error{Error{"value_must_be_object", f, nil}}
 	}
 	ae := make([]Error, 0, 8)
-	v.ObjectForEach(func(k string, u *jsem.Value) {
+	for k, u := range o {
 		ae = append(ae, a.e.Validate(u, append(f, k))...)
-	})
+	}
 	return ae
 }
 func (a MapValidator) Validator() Validator {
 	return a.e
 }
 
-func (a MapValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
-	v.ForEach(func(v *jsem.Value) {
+func (a MapValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
+	for _, v := range v.(map[string]interface{}) {
 		a.e.Traverse(v, f)
-	})
+	}
 }
 
 type ArrayValidator struct {
@@ -349,24 +356,25 @@ func Array(e Validator) Validator {
 	return ArrayValidator{e}
 }
 
-func (a ArrayValidator) Validate(v *jsem.Value, f []string) []Error {
-	if !v.IsArray() {
+func (a ArrayValidator) Validate(v interface{}, f []string) []Error {
+	o, k := v.([]interface{})
+	if !k {
 		return []Error{Error{"value_must_be_array", f, nil}}
 	}
 	ae := make([]Error, 0, 8)
-	v.ArrayForEach(func(i int, u *jsem.Value) {
+	for i, u := range o {
 		ae = append(ae, a.e.Validate(u, append(f, strconv.Itoa(i)))...)
-	})
+	}
 	return ae
 }
 func (a ArrayValidator) Validator() Validator {
 	return a.e
 }
 
-func (a ArrayValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
-	v.ForEach(func(v *jsem.Value) {
+func (a ArrayValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
+	for _, v := range v.([]interface{}) {
 		a.e.Traverse(v, f)
-	})
+	}
 }
 
 type RegexValidator struct {
@@ -402,9 +410,9 @@ func (a RegexValidator) Regex() *regexp.Regexp {
 	return regexp.MustCompile(x)
 }
 
-func (a RegexValidator) Validate(v *jsem.Value, f []string) []Error {
-	return And(String(), Lambda(func(v *jsem.Value, f []string) []Error {
-		s, _ := v.String()
+func (a RegexValidator) Validate(v interface{}, f []string) []Error {
+	return And(String(), Lambda(func(v interface{}, f []string) []Error {
+		s := v.(string)
 		if a.Regex().MatchString(s) {
 			return NoErrors
 		}
@@ -422,7 +430,7 @@ func (a RegexValidator) Validate(v *jsem.Value, f []string) []Error {
 	})).Validate(v, f)
 }
 
-func (a RegexValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a RegexValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
@@ -432,8 +440,8 @@ func (a RegexValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) 
 // 	return RegexStringValidator{}
 // }
 
-// func (a RegexStringValidator) Validate(v *jsem.Value, f []string) []Error {
-// 	return And(String(), Lambda(func(v *jsem.Value, f []string) []Error {
+// func (a RegexStringValidator) Validate(v interface{}, f []string) []Error {
+// 	return And(String(), Lambda(func(v interface{}, f []string) []Error {
 // 		s, _ := v.String()
 // 		_, e := regexp.Compile(s)
 // 		if e != nil {
@@ -451,7 +459,7 @@ func Optional(e Validator) Validator {
 	return OptionalValidator{e}
 }
 
-func (a OptionalValidator) Validate(v *jsem.Value, f []string) []Error {
+func (a OptionalValidator) Validate(v interface{}, f []string) []Error {
 	if v == nil {
 		return NoErrors
 	}
@@ -461,7 +469,7 @@ func (a OptionalValidator) Validator() Validator {
 	return a.e
 }
 
-func (a OptionalValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a OptionalValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	a.e.Traverse(v, f)
 }
 
@@ -476,13 +484,14 @@ func LengthBetween(x, y int) Validator {
 	return LengthBetweenValidator{x, y}
 }
 
-func (a LengthBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
-	return And(Or(String(), Array(Anything())), Lambda(func(v *jsem.Value, f []string) []Error {
+func (a LengthBetweenValidator) Validate(v interface{}, f []string) []Error {
+	return And(Or(String(), Array(Anything())), Lambda(func(v interface{}, f []string) []Error {
 		l := -1
-		if v.IsArray() {
-			l, _ = v.ArrayLength()
-		} else {
-			l, _ = v.StringLength()
+		switch t := v.(type) {
+		case string:
+			l = len(t)
+		case []interface{}:
+			l = len(t)
 		}
 		if l < a.x || l > a.y {
 			if a.x == a.y {
@@ -506,7 +515,7 @@ func (a LengthBetweenValidator) Max() int {
 	return a.y
 }
 
-func (a LengthBetweenValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a LengthBetweenValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
@@ -525,9 +534,9 @@ func NumberBetween(x, y float64) Validator {
 	return NumberBetweenValidator{x, y}
 }
 
-func (a NumberBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
-	return And(Number(), Lambda(func(v *jsem.Value, f []string) []Error {
-		l, _ := v.Float64()
+func (a NumberBetweenValidator) Validate(v interface{}, f []string) []Error {
+	return And(Number(), Lambda(func(v interface{}, f []string) []Error {
+		l := v.(float64)
 		if l < a.x || l > a.y {
 			return []Error{
 				Error{"value_must_have_value_between", f, map[string]float64{"min": a.x, "max": a.y}},
@@ -537,7 +546,7 @@ func (a NumberBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
 	})).Validate(v, f)
 }
 
-func (a NumberBetweenValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a NumberBetweenValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
@@ -547,9 +556,9 @@ func WholeNumber() Validator {
 	return WholeNumberValidator{}
 }
 
-func (a WholeNumberValidator) Validate(v *jsem.Value, f []string) []Error {
-	return And(Number(), Lambda(func(v *jsem.Value, f []string) []Error {
-		n, _ := v.Float64()
+func (a WholeNumberValidator) Validate(v interface{}, f []string) []Error {
+	return And(Number(), Lambda(func(v interface{}, f []string) []Error {
+		n := v.(float64)
 		_, r := math.Modf(n)
 		if r != 0 {
 			return []Error{Error{"value_must_be_whole_number", f, nil}}
@@ -558,7 +567,7 @@ func (a WholeNumberValidator) Validate(v *jsem.Value, f []string) []Error {
 	})).Validate(v, f)
 }
 
-func (a WholeNumberValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a WholeNumberValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
@@ -573,34 +582,34 @@ func WholeNumberBetween(x, y int) Validator {
 	return WholeNumberBetweenValidator{x, y}
 }
 
-func (a WholeNumberBetweenValidator) Validate(v *jsem.Value, f []string) []Error {
+func (a WholeNumberBetweenValidator) Validate(v interface{}, f []string) []Error {
 	return And(WholeNumber(), NumberBetween(float64(a.x), float64(a.y))).Validate(v, f)
 }
 
-func (a WholeNumberBetweenValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a WholeNumberBetweenValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
 type ExactlyValidator struct {
-	j *jsem.Value
+	j interface{}
 }
 
-func Exactly(j *jsem.Value) Validator {
+func Exactly(j interface{}) Validator {
 	return ExactlyValidator{j}
 }
 
-func (a ExactlyValidator) Value() *jsem.Value {
+func (a ExactlyValidator) Value() interface{} {
 	return a.j
 }
 
-func (a ExactlyValidator) Validate(v *jsem.Value, f []string) []Error {
-	if !v.Equals(a.j) {
+func (a ExactlyValidator) Validate(v interface{}, f []string) []Error {
+	if v != a.j {
 		return []Error{Error{"value_not_matched_exactly", f, nil}}
 	}
 	return NoErrors
 }
 
-func (a ExactlyValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (a ExactlyValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	f(v, a)
 }
 
@@ -621,7 +630,7 @@ func (r *RecursiveValidator) Validator() Validator {
 	return r.v
 }
 
-func (r *RecursiveValidator) Validate(v *jsem.Value, f []string) []Error {
+func (r *RecursiveValidator) Validate(v interface{}, f []string) []Error {
 	return r.v.Validate(v, f)
 }
 
@@ -629,7 +638,7 @@ func (r *RecursiveValidator) Define(v Validator) {
 	r.v = v
 }
 
-func (r *RecursiveValidator) Traverse(v *jsem.Value, f func(*jsem.Value, Validator)) {
+func (r *RecursiveValidator) Traverse(v interface{}, f func(interface{}, Validator)) {
 	r.v.Traverse(v, f)
 }
 
